@@ -105,7 +105,26 @@ void main() {
         final config = Config.decode(source);
         expect(config.apps, isEmpty);
         expect(config.schedule.windows, Schedule.initial.windows);
+        expect(config.hasPin, isFalse);
+        expect(config.cooldownMinutes, 0);
       }
+    });
+
+    test('PIN va sovish davri JSON orqali saqlanadi', () {
+      const base = Config(apps: []);
+      final withPin = base
+          .withPinHash('salt:abc')
+          .copyWith(cooldownMinutes: 30);
+      final decoded = Config.decode(withPin.encode());
+      expect(decoded.hasPin, isTrue);
+      expect(decoded.pinHash, 'salt:abc');
+      expect(decoded.cooldownMinutes, 30);
+    });
+
+    test('withPinHash(null) PIN ni olib tashlaydi', () {
+      final c = const Config().withPinHash('salt:abc');
+      expect(c.hasPin, isTrue);
+      expect(c.withPinHash(null).hasPin, isFalse);
     });
   });
 }

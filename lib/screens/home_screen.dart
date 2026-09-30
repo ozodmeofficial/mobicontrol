@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../models/schedule.dart';
 import '../services/native_bridge.dart';
 import 'app_picker_screen.dart';
+import 'pin_flow.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -19,7 +20,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final Map<String, Uint8List?> _icons = {};
   bool _serviceEnabled = false;
   bool _loading = true;
+  // PIN o'rnatilgan bo'lsa, sozlamalar shu sessiyada bir marta ochilgach
+  // tahrirlanadi. Ilovadan chiqib qayta kirilsa yana qulflanadi.
+  bool _unlocked = false;
   Timer? _ticker;
+
+  bool get _editable => !_config.hasPin || _unlocked;
 
   @override
   void initState() {
@@ -51,11 +57,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (!mounted) return;
     setState(() {
       _config = config;
+      _unlocked = !config.hasPin;
       _loading = false;
     });
     for (final app in config.apps) {
       _loadIcon(app.packageName);
     }
+  }
+
+  /// Tahrirlashdan oldin PIN qulfini ochadi. Ochilsa (yoki PIN yo'q bo'lsa)
+  /// `true`.
+  Future<bool> _ensureUnlocked() async {
+    if (_editable) return true;
+    final ok = await PinFlow.unlock(context, _config);
+    if (ok && mounted) setState(() => _unlocked = true);
+    return ok;
   }
 
   Future<void> _loadIcon(String packageName) async {
@@ -77,10 +93,27 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     await NativeBridge.saveConfig(config);
   }
 
-  void _updateSchedule(Schedule schedule) =>
-      _update(_config.copyWith(schedule: schedule));
+  /// Jadval o'zgarganda. Cheklovni o'chirish (enabled: true → false) sovish
+  /// davri bilan himoyalangan.
+  Future<void> _updateSchedule(Schedule schedule) async {
+    final turningOff = _config.schedule.enabled && !schedule.enabled;
+    if (turningOff && _config.cooldownMinutes > 0) {
+      final confirmed = await PinFlow.waitCooldown(
+        context,
+        minutes: _config.cooldownMinutes,
+        title: "Cheklovni o'chirish",
+        message:
+            "Cheklovni o'chirish uchun ${_config.cooldownMinutes} daqiqa "
+            'kutish kerak. Shu vaqt tugagach tasdiqlaysiz.',
+      );
+      if (!confirmed) return;
+    }
+    await _update(_config.copyWith(schedule: schedule));
+  }
 
   Future<void> _pickApps() async {
+    if (!await _ensureUnlocked()) return;
+    if (!mounted) return;
     final picked = await Navigator.of(context).push<List<InstalledApp>>(
       MaterialPageRoute(
         builder: (_) => AppPickerScreen(
@@ -102,6 +135,52 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
+  Future<void> _setOrChangePin() async {
+    if (!await _ensureUnlocked()) return;
+    if (!mounted) return;
+    final hash = await PinFlow.setNewPin(context);
+    if (hash == null) return;
+    await _update(_config.withPinHash(hash));
+    if (mounted) {
+      setState(() => _unlocked = true);
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text("PIN o'rnatildi")));
+    }
+  }
+
+  Future<void> _removePin() async {
+    if (!await _ensureUnlocked()) return;
+    if (!mounted) return;
+    await _update(_config.withPinHash(null));
+    if (mounted) setState(() => _unlocked = true);
+  }
+
+  Future<void> _setCooldown() async {
+    if (!await _ensureUnlocked()) return;
+    if (!mounted) return;
+    final minutes = await showDialog<int>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: const Text('Sovish davri'),
+        children: [
+          for (final m in const [0, 5, 15, 30, 60, 180])
+            ListTile(
+              leading: Icon(
+                m == _config.cooldownMinutes
+                    ? Icons.radio_button_checked
+                    : Icons.radio_button_unchecked,
+              ),
+              title: Text(m == 0 ? "O'chirilgan" : '$m daqiqa'),
+              onTap: () => Navigator.pop(context, m),
+            ),
+        ],
+      ),
+    );
+    if (minutes != null) {
+      await _update(_config.copyWith(cooldownMinutes: minutes));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
@@ -117,9 +196,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   onEnable: NativeBridge.openAccessibilitySettings,
                 ),
                 const SizedBox(height: 16),
+                if (_config.hasPin && !_unlocked) ...[
+                  _LockBanner(onUnlock: _ensureUnlocked),
+                  const SizedBox(height: 16),
+                ],
                 ScheduleCard(
                   schedule: _config.schedule,
                   onChanged: _updateSchedule,
+                  enabled: _editable,
                 ),
                 const SizedBox(height: 24),
                 Row(
@@ -151,19 +235,29 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                             trailing: IconButton(
                               tooltip: "Ro'yxatdan olib tashlash",
                               icon: const Icon(Icons.close),
-                              onPressed: () => _update(
-                                _config.copyWith(
-                                  apps: [
-                                    for (final a in _config.apps)
-                                      if (a.packageName != app.packageName) a,
-                                  ],
-                                ),
-                              ),
+                              onPressed: () async {
+                                if (!await _ensureUnlocked()) return;
+                                await _update(
+                                  _config.copyWith(
+                                    apps: [
+                                      for (final a in _config.apps)
+                                        if (a.packageName != app.packageName) a,
+                                    ],
+                                  ),
+                                );
+                              },
                             ),
                           ),
                       ],
                     ),
                   ),
+                const SizedBox(height: 24),
+                _ProtectionCard(
+                  config: _config,
+                  onSetPin: _setOrChangePin,
+                  onRemovePin: _removePin,
+                  onSetCooldown: _setCooldown,
+                ),
               ],
             ),
     );
@@ -176,10 +270,14 @@ class ScheduleCard extends StatelessWidget {
     super.key,
     required this.schedule,
     required this.onChanged,
+    this.enabled = true,
   });
 
   final Schedule schedule;
   final ValueChanged<Schedule> onChanged;
+
+  /// `false` bo'lsa (PIN qulfi ochilmagan) barcha boshqaruvlar o'chiriladi.
+  final bool enabled;
 
   Future<int?> _pickTime(
     BuildContext context,
@@ -237,7 +335,9 @@ class ScheduleCard extends StatelessWidget {
                 ),
                 Switch(
                   value: schedule.enabled,
-                  onChanged: (v) => onChanged(schedule.copyWith(enabled: v)),
+                  onChanged: enabled
+                      ? (v) => onChanged(schedule.copyWith(enabled: v))
+                      : null,
                 ),
               ],
             ),
@@ -275,16 +375,21 @@ class ScheduleCard extends StatelessWidget {
                       child: _TimeButton(
                         caption: 'Dan',
                         minutes: windows[i].start,
-                        onTap: () async {
-                          final start = await _pickTime(
-                            context,
-                            windows[i].start,
-                            'Boshlanish vaqti',
-                          );
-                          if (start != null) {
-                            _setWindow(i, windows[i].copyWith(start: start));
-                          }
-                        },
+                        onTap: !enabled
+                            ? null
+                            : () async {
+                                final start = await _pickTime(
+                                  context,
+                                  windows[i].start,
+                                  'Boshlanish vaqti',
+                                );
+                                if (start != null) {
+                                  _setWindow(
+                                    i,
+                                    windows[i].copyWith(start: start),
+                                  );
+                                }
+                              },
                       ),
                     ),
                     const Padding(
@@ -297,24 +402,30 @@ class ScheduleCard extends StatelessWidget {
                             ? 'Gacha (ertasi kun)'
                             : 'Gacha',
                         minutes: windows[i].end,
-                        onTap: () async {
-                          final end = await _pickTime(
-                            context,
-                            windows[i].end,
-                            'Tugash vaqti',
-                          );
-                          if (end != null) {
-                            _setWindow(i, windows[i].copyWith(end: end));
-                          }
-                        },
+                        onTap: !enabled
+                            ? null
+                            : () async {
+                                final end = await _pickTime(
+                                  context,
+                                  windows[i].end,
+                                  'Tugash vaqti',
+                                );
+                                if (end != null) {
+                                  _setWindow(i, windows[i].copyWith(end: end));
+                                }
+                              },
                       ),
                     ),
                     IconButton(
                       tooltip: "Oraliqni o'chirish",
                       icon: const Icon(Icons.close),
-                      onPressed: () => onChanged(
-                        schedule.copyWith(windows: [...windows]..removeAt(i)),
-                      ),
+                      onPressed: !enabled
+                          ? null
+                          : () => onChanged(
+                              schedule.copyWith(
+                                windows: [...windows]..removeAt(i),
+                              ),
+                            ),
                     ),
                   ],
                 ),
@@ -326,7 +437,7 @@ class ScheduleCard extends StatelessWidget {
                 style: textTheme.bodySmall,
               ),
             TextButton.icon(
-              onPressed: () => _addWindow(context),
+              onPressed: enabled ? () => _addWindow(context) : null,
               icon: const Icon(Icons.add),
               label: const Text("Vaqt oralig'i qo'shish"),
             ),
@@ -346,13 +457,15 @@ class ScheduleCard extends StatelessWidget {
                   FilterChip(
                     label: Text(entry.value),
                     selected: schedule.days.contains(entry.key),
-                    onSelected: (selected) => onChanged(
-                      schedule.copyWith(
-                        days: selected
-                            ? {...schedule.days, entry.key}
-                            : ({...schedule.days}..remove(entry.key)),
-                      ),
-                    ),
+                    onSelected: !enabled
+                        ? null
+                        : (selected) => onChanged(
+                            schedule.copyWith(
+                              days: selected
+                                  ? {...schedule.days, entry.key}
+                                  : ({...schedule.days}..remove(entry.key)),
+                            ),
+                          ),
                   ),
               ],
             ),
@@ -372,7 +485,7 @@ class _TimeButton extends StatelessWidget {
 
   final String caption;
   final int minutes;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -390,6 +503,116 @@ class _TimeButton extends StatelessWidget {
             style: textTheme.headlineSmall,
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _LockBanner extends StatelessWidget {
+  const _LockBanner({required this.onUnlock});
+
+  final Future<bool> Function() onUnlock;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Card(
+      color: scheme.secondaryContainer,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            const Icon(Icons.lock_outline),
+            const SizedBox(width: 12),
+            const Expanded(
+              child: Text(
+                'Sozlamalar PIN bilan himoyalangan. O‘zgartirish uchun '
+                'qulfni oching.',
+              ),
+            ),
+            const SizedBox(width: 8),
+            FilledButton(
+              onPressed: () => onUnlock(),
+              child: const Text('Qulfni ochish'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Himoya sozlamalari: PIN va sovish davri.
+class _ProtectionCard extends StatelessWidget {
+  const _ProtectionCard({
+    required this.config,
+    required this.onSetPin,
+    required this.onRemovePin,
+    required this.onSetCooldown,
+  });
+
+  final Config config;
+  final VoidCallback onSetPin;
+  final VoidCallback onRemovePin;
+  final VoidCallback onSetCooldown;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Himoya', style: textTheme.titleLarge),
+            const SizedBox(height: 4),
+            Text(
+              'Bu sozlamalar cheklovni bir zumda yumshatib yuborishdan '
+              'ushlab turadi. Telefon egasi ilovani baribir oddiy yo‘l bilan '
+              'o‘chira oladi.',
+              style: textTheme.bodySmall,
+            ),
+            const SizedBox(height: 8),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.password),
+              title: Text(config.hasPin ? 'PIN o‘rnatilgan' : 'PIN yo‘q'),
+              subtitle: const Text(
+                'Sozlamalarni o‘zgartirish uchun PIN so‘raladi',
+              ),
+              trailing: Wrap(
+                spacing: 4,
+                children: [
+                  TextButton(
+                    onPressed: onSetPin,
+                    child: Text(config.hasPin ? 'O‘zgartirish' : 'O‘rnatish'),
+                  ),
+                  if (config.hasPin)
+                    TextButton(
+                      onPressed: onRemovePin,
+                      child: const Text('O‘chirish'),
+                    ),
+                ],
+              ),
+            ),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.hourglass_bottom),
+              title: const Text('Sovish davri'),
+              subtitle: Text(
+                config.cooldownMinutes == 0
+                    ? 'O‘chirilgan'
+                    : 'Cheklovni o‘chirishdan oldin '
+                          '${config.cooldownMinutes} daqiqa kutiladi',
+              ),
+              trailing: TextButton(
+                onPressed: onSetCooldown,
+                child: const Text('O‘zgartirish'),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

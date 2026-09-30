@@ -122,19 +122,55 @@ class RestrictedApp {
   );
 }
 
-/// Saqlanadigan to'liq holat: umumiy jadval va unga bo'ysunadigan ilovalar.
+/// Saqlanadigan to'liq holat: umumiy jadval, unga bo'ysunadigan ilovalar,
+/// ixtiyoriy PIN himoyasi va sovish davri.
+///
+/// [pinHash] — cheklovni o'zgartirish/o'chirish uchun so'raladigan PIN'ning
+/// hashi (`null` bo'lsa PIN yo'q). [cooldownMinutes] — cheklovni o'chirish
+/// yoki bo'shatishdan oldin kutish (impulsni jilovlash uchun).
+///
+/// Bu himoyalar faqat ilova ichidagi sozlamalarni «bir zumda» yumshatib
+/// yuborishdan ushlab turadi. Telefon egasi ilovani baribir oddiy yo'l bilan
+/// (Sozlamalar → Ilovalar → O'chirish) olib tashlay oladi — bu ataylab shunday.
 class Config {
-  const Config({this.schedule = Schedule.initial, this.apps = const []});
+  const Config({
+    this.schedule = Schedule.initial,
+    this.apps = const [],
+    this.pinHash,
+    this.cooldownMinutes = 0,
+  });
 
   final Schedule schedule;
   final List<RestrictedApp> apps;
+  final String? pinHash;
+  final int cooldownMinutes;
 
-  Config copyWith({Schedule? schedule, List<RestrictedApp>? apps}) =>
-      Config(schedule: schedule ?? this.schedule, apps: apps ?? this.apps);
+  bool get hasPin => pinHash != null;
+
+  Config copyWith({
+    Schedule? schedule,
+    List<RestrictedApp>? apps,
+    int? cooldownMinutes,
+  }) => Config(
+    schedule: schedule ?? this.schedule,
+    apps: apps ?? this.apps,
+    pinHash: pinHash,
+    cooldownMinutes: cooldownMinutes ?? this.cooldownMinutes,
+  );
+
+  /// PIN'ni o'rnatadi yoki (null bilan) olib tashlaydi.
+  Config withPinHash(String? hash) => Config(
+    schedule: schedule,
+    apps: apps,
+    pinHash: hash,
+    cooldownMinutes: cooldownMinutes,
+  );
 
   String encode() => jsonEncode({
     'schedule': schedule.toJson(),
     'apps': apps.map((a) => a.toJson()).toList(),
+    if (pinHash != null) 'pinHash': pinHash,
+    'cooldownMinutes': cooldownMinutes,
   });
 
   static Config decode(String? source) {
@@ -151,6 +187,8 @@ class Config {
             (a) => RestrictedApp.fromJson((a as Map).cast<String, dynamic>()),
           )
           .toList(),
+      pinHash: json['pinHash'] as String?,
+      cooldownMinutes: json['cooldownMinutes'] as int? ?? 0,
     );
   }
 }

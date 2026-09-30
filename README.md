@@ -9,10 +9,28 @@ boshqa vaqtda ularni ochishga urinsangiz, bloklash ekrani chiqadi.
 > Apple'ning Screen Time (FamilyControls) API'si orqali, maxsus ruxsat
 > (entitlement) bilan mumkin, shuning uchun hozircha faqat Android qo'llab-quvvatlanadi.
 
-## Yuklab olish
+## Yuklab olish va o'rnatish
 
 Tayyor APK: [Releases](../../releases) sahifasidan `MobiControl.apk` ni yuklab,
 telefonga o'rnating ("Noma'lum manbalardan o'rnatish"ga ruxsat berish kerak bo'ladi).
+
+### Play Protect ogohlantirsa
+
+Play Market'dan tashqarida tarqatilgan, Accessibility ishlatadigan ilovalarni
+Google Play Protect ba'zan «tekshirilmagan» deb belgilaydi va o'rnatishni
+to'xtatadi. Bu — ilova yomon degani emas, balki sideload + Accessibility
+naqshiga qo'yilgan ehtiyot chorasi. **O'z telefoningizda** o'rnatish uchun:
+
+- Ogohlantirishda **"Batafsil" (More details) → "Baribir o'rnatish"
+  (Install anyway)** ni tanlang.
+- Yoki *Sozlamalar → Xavfsizlik → Google Play Protect* da tekshiruvni
+  vaqtincha o'chirib, o'rnatgandan so'ng qayta yoqing.
+
+**Ogohlantirishsiz, «toza» tarqatishning to'g'ri yo'li** — ilovani Google Play
+Console orqali chiqarish (hatto yopiq/ichki test — *internal testing* —
+kanalida ham). Bunda ilova imzolanadi va ro'yxatdan o'tadi, Play Protect uni
+ishonchli deb biladi. Buning uchun avval o'z imzo kalitingizni sozlang
+(pastdagi "Release chiqarish" bo'limiga qarang).
 
 ## Imkoniyatlar
 
@@ -27,13 +45,26 @@ telefonga o'rnating ("Noma'lum manbalardan o'rnatish"ga ruxsat berish kerak bo'l
 - Ilova ochiq turgan paytda ruxsat vaqti tugasa ham (~15 soniya ichida) bloklanadi.
 - Bosh ekran (launcher) va qo'ng'iroq ilovasi hech qachon bloklanmaydi —
   favqulodda qo'ng'iroq har doim mumkin.
+- **PIN himoyasi** (ixtiyoriy): sozlamalarni o'zgartirish yoki cheklovni
+  o'chirish uchun PIN so'raladi — o'zingizni bir zumda yumshatib yuborishdan
+  ushlab turadi.
+- **Sovish davri** (ixtiyoriy): cheklovni o'chirishdan oldin belgilangan vaqt
+  (5–180 daqiqa) kutiladi, impulsni jilovlaydi.
+
+> **Muhim:** bu himoyalar faqat _ilova ichidagi sozlamalarni_ himoyalaydi.
+> Telefon egasi ilovani baribir oddiy yo'l bilan (Sozlamalar → Ilovalar →
+> O'chirish) olib tashlay oladi — bu ataylab shunday. MobiControl o'zini
+> o'chirilishdan himoya qilmaydi va boshqa odam telefoniga yashirincha
+> o'rnatish uchun mo'ljallanmagan.
 
 ## Qanday ishlaydi
 
 | Qism | Fayl | Vazifasi |
 |---|---|---|
 | Flutter UI | `lib/screens/` | Jadvalni sozlash, ilovalarni tanlash |
-| Jadval mantiqi | `lib/models/schedule.dart` | Vaqt oraliqlari, JSON, `isAllowedAt()` |
+| Jadval mantiqi | `lib/models/schedule.dart` | Vaqt oraliqlari, PIN/cooldown, JSON, `isAllowedAt()` |
+| PIN | `lib/services/pin.dart` | Tuzli (salted) SHA-256 hash |
+| PIN/cooldown UI | `lib/screens/pin_flow.dart` | PIN so'rash va sovish davri dialoglari |
 | Aloqa | `lib/services/native_bridge.dart` | `MethodChannel` (`uz.mobicontrol/native`) |
 | Saqlash | `android/.../RuleStore.kt` | Jadval va ilovalar Android `SharedPreferences`'da |
 | Bloklovchi | `android/.../AppBlockerService.kt` | `AccessibilityService`: oldinga chiqqan ilovani aniqlab, kerak bo'lsa bloklaydi |

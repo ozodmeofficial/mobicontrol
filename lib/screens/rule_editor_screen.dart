@@ -50,13 +50,18 @@ class _RuleEditorScreenState extends State<RuleEditorScreen> {
     return picked == null ? null : picked.hour * 60 + picked.minute;
   }
 
-  Future<void> _editWindow(int index) async {
+  Future<void> _editStart(int index) async {
     final w = _windows[index];
     final start = await _pickTime(w.start, 'Boshlanish vaqti');
-    if (start == null || !mounted) return;
+    if (start == null) return;
+    setState(() => _windows[index] = w.copyWith(start: start));
+  }
+
+  Future<void> _editEnd(int index) async {
+    final w = _windows[index];
     final end = await _pickTime(w.end, 'Tugash vaqti');
     if (end == null) return;
-    setState(() => _windows[index] = TimeWindow(start: start, end: end));
+    setState(() => _windows[index] = w.copyWith(end: end));
   }
 
   Future<void> _addWindow() async {
@@ -169,20 +174,46 @@ class _RuleEditorScreenState extends State<RuleEditorScreen> {
           const SizedBox(height: 8),
           for (var i = 0; i < _windows.length; i++)
             Card(
-              child: ListTile(
-                leading: const Icon(Icons.schedule),
-                title: Text(_windows[i].label, style: textTheme.titleMedium),
-                subtitle: _windows[i].start > _windows[i].end
-                    ? const Text('Yarim tundan o‘tadi')
-                    : _windows[i].start == _windows[i].end
-                    ? const Text('Butun kun')
-                    : null,
-                onTap: () => _editWindow(i),
-                trailing: IconButton(
-                  icon: const Icon(Icons.close),
-                  onPressed: () =>
-                      setState(() => _windows = [..._windows]..removeAt(i)),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: _TimeButton(
+                        caption: 'Dan',
+                        minutes: _windows[i].start,
+                        onTap: () => _editStart(i),
+                      ),
+                    ),
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 8),
+                      child: Icon(Icons.arrow_forward),
+                    ),
+                    Expanded(
+                      child: _TimeButton(
+                        caption: _windows[i].start > _windows[i].end
+                            ? 'Gacha (ertasi kun)'
+                            : 'Gacha',
+                        minutes: _windows[i].end,
+                        onTap: () => _editEnd(i),
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: "Oraliqni o'chirish",
+                      icon: const Icon(Icons.close),
+                      onPressed: () =>
+                          setState(() => _windows = [..._windows]..removeAt(i)),
+                    ),
+                  ],
                 ),
+              ),
+            ),
+          if (_windows.any((w) => w.start == w.end))
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                "Boshlanish va tugash vaqti bir xil bo'lsa, ilova butun kun ochiq bo'ladi.",
+                style: textTheme.bodySmall,
               ),
             ),
           Align(
@@ -215,6 +246,38 @@ class _RuleEditorScreenState extends State<RuleEditorScreen> {
                   }),
                 ),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TimeButton extends StatelessWidget {
+  const _TimeButton({
+    required this.caption,
+    required this.minutes,
+    required this.onTap,
+  });
+
+  final String caption;
+  final int minutes;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    return OutlinedButton(
+      onPressed: onTap,
+      style: OutlinedButton.styleFrom(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+      ),
+      child: Column(
+        children: [
+          Text(caption, style: textTheme.labelSmall),
+          Text(
+            TimeWindow.formatMinutes(minutes),
+            style: textTheme.headlineSmall,
           ),
         ],
       ),

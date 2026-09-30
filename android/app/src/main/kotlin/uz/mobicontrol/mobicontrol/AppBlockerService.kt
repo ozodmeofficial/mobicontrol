@@ -6,6 +6,7 @@ import android.content.SharedPreferences
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.telecom.TelecomManager
 import android.view.accessibility.AccessibilityEvent
 import android.view.inputmethod.InputMethodManager
 import java.util.Calendar
@@ -16,14 +17,14 @@ import java.util.Calendar
  */
 class AppBlockerService : AccessibilityService() {
     private val handler = Handler(Looper.getMainLooper())
-    private var rules: Map<String, AppRule> = emptyMap()
+    private var config: Config = Config.EMPTY
     private var currentPackage: String? = null
     private var lastBlockedPackage: String? = null
     private var lastBlockedAt = 0L
 
     private val prefsListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-        if (key == RuleStore.KEY_RULES) {
-            rules = RuleStore.load(this)
+        if (key == RuleStore.KEY_CONFIG) {
+            config = RuleStore.load(this)
             currentPackage?.let { check(it) }
         }
     }
@@ -38,7 +39,7 @@ class AppBlockerService : AccessibilityService() {
 
     override fun onServiceConnected() {
         super.onServiceConnected()
-        rules = RuleStore.load(this)
+        config = RuleStore.load(this)
         RuleStore.prefs(this).registerOnSharedPreferenceChangeListener(prefsListener)
         handler.postDelayed(periodicCheck, CHECK_INTERVAL_MS)
     }
@@ -71,9 +72,23 @@ class AppBlockerService : AccessibilityService() {
         return imm.enabledInputMethodList.any { it.packageName == pkg }
     }
 
+    /**
+     * Bosh ekran (launcher) va qo'ng'iroq ilovasi hech qachon bloklanmaydi:
+     * aks holda telefondan umuman foydalanib bo'lmay qoladi yoki favqulodda
+     * qo'ng'iroq qilib bo'lmaydi.
+     */
+    private fun isEssential(pkg: String): Boolean {
+        val home = packageManager.resolveActivity(
+            Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME), 0
+        )?.activityInfo?.packageName
+        val dialer = getSystemService(TelecomManager::class.java)?.defaultDialerPackage
+        return pkg == home || pkg == dialer
+    }
+
     private fun check(pkg: String) {
-        val rule = rules[pkg] ?: return
-        if (rule.isAllowedAt(Calendar.getInstance())) return
+        val appName = config.apps[pkg] ?: return
+        if (isEssential(pkg)) return
+        if (config.schedule.isAllowedAt(Calendar.getInstance())) return
 
         val now = SystemClock.elapsedRealtime()
         if (pkg == lastBlockedPackage && now - lastBlockedAt < DEBOUNCE_MS) return
@@ -84,8 +99,8 @@ class AppBlockerService : AccessibilityService() {
         startActivity(
             Intent(this, BlockActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
-                .putExtra(BlockActivity.EXTRA_APP_NAME, rule.appName)
-                .putExtra(BlockActivity.EXTRA_SCHEDULE, rule.scheduleLabel)
+                .putExtra(BlockActivity.EXTRA_APP_NAME, appName)
+                .putExtra(BlockActivity.EXTRA_SCHEDULE, config.schedule.label)
         )
     }
 

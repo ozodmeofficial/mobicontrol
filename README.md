@@ -1,32 +1,41 @@
 # MobiControl
 
-Telefoningizdagi ilovalardan **faqat belgilangan vaqtlarda** foydalanish imkonini
-beruvchi Flutter ilovasi. Masalan: Instagram faqat 12:00–13:00 va 20:00–21:00
-oralig'ida ochiladi, qolgan vaqtda uni ochishga urinsangiz, bloklash ekrani chiqadi.
+Telefoningizdagi ilovalardan **faqat belgilangan vaqtda** foydalanish imkonini
+beruvchi Flutter ilovasi. Siz **bitta umumiy jadval** belgilaysiz (masalan,
+12:00–13:00 va 20:00–21:00), tanlagan **barcha ilovalar** shu jadvalga bo'ysunadi:
+boshqa vaqtda ularni ochishga urinsangiz, bloklash ekrani chiqadi.
 
 > Platforma: **Android** (API 24+). iOS'da boshqa ilovalarni bloklash faqat
 > Apple'ning Screen Time (FamilyControls) API'si orqali, maxsus ruxsat
 > (entitlement) bilan mumkin, shuning uchun hozircha faqat Android qo'llab-quvvatlanadi.
 
+## Yuklab olish
+
+Tayyor APK: [Releases](../../releases) sahifasidan `MobiControl.apk` ni yuklab,
+telefonga o'rnating ("Noma'lum manbalardan o'rnatish"ga ruxsat berish kerak bo'ladi).
+
 ## Imkoniyatlar
 
-- O'rnatilgan ilovalar ro'yxatidan (qidiruv bilan) ilovani tanlash.
-- Har bir ilova uchun bir nechta **ruxsat berilgan vaqt oraliqlari**
-  (yarim tundan o'tuvchi oraliqlar ham, masalan 22:00–02:00).
+- **Umumiy jadval**: bir nechta ruxsat berilgan vaqt oraliqlari, har birining
+  "Dan" va "Gacha" vaqtini o'zingiz tanlaysiz (yarim tundan o'tuvchi oraliqlar
+  ham mumkin, masalan 22:00–02:00).
 - **Cheklov kunlari**: masalan, faqat ish kunlari cheklash, dam olish kunlari erkin.
-- Oraliq qo'shilmasa — ilova tanlangan kunlarda **butunlay bloklanadi**.
-- Har bir cheklovni tezda yoqish/o'chirish.
+- Oraliq qo'shilmasa — tanlangan ilovalar o'sha kunlari **butunlay bloklanadi**.
+- **Istalgan ilovani** tanlash: telefondagi barcha ilovalar ro'yxati, qidiruv
+  va **"Hammasini tanlash"** tugmasi.
+- Jadvalni bitta tugma bilan yoqish/o'chirish.
 - Ilova ochiq turgan paytda ruxsat vaqti tugasa ham (~15 soniya ichida) bloklanadi.
-- Bosh ekranda har bir ilovaning hozirgi holati: "ruxsat berilgan" / "bloklangan".
+- Bosh ekran (launcher) va qo'ng'iroq ilovasi hech qachon bloklanmaydi —
+  favqulodda qo'ng'iroq har doim mumkin.
 
 ## Qanday ishlaydi
 
 | Qism | Fayl | Vazifasi |
 |---|---|---|
-| Flutter UI | `lib/screens/` | Ilovalarni tanlash, jadvalni tahrirlash |
-| Jadval mantiqi | `lib/models/app_rule.dart` | Vaqt oraliqlari, JSON, `isAllowedAt()` |
+| Flutter UI | `lib/screens/` | Jadvalni sozlash, ilovalarni tanlash |
+| Jadval mantiqi | `lib/models/schedule.dart` | Vaqt oraliqlari, JSON, `isAllowedAt()` |
 | Aloqa | `lib/services/native_bridge.dart` | `MethodChannel` (`uz.mobicontrol/native`) |
-| Saqlash | `android/.../RuleStore.kt` | Qoidalar Android `SharedPreferences`'da |
+| Saqlash | `android/.../RuleStore.kt` | Jadval va ilovalar Android `SharedPreferences`'da |
 | Bloklovchi | `android/.../AppBlockerService.kt` | `AccessibilityService`: oldinga chiqqan ilovani aniqlab, kerak bo'lsa bloklaydi |
 | Bloklash ekrani | `android/.../BlockActivity.kt` | "Ilova hozir bloklangan" ekrani |
 
@@ -53,11 +62,35 @@ Ilk ishga tushirishda:
    Android 13+ da, agar ilova Play Market'dan emas, APK orqali o'rnatilgan
    bo'lsa, avval *Sozlamalar → Ilovalar → MobiControl → ⋮ → Cheklangan
    sozlamalarga ruxsat berish* ni bosish kerak bo'lishi mumkin.
-3. **"Ilova qo'shish"** → ilovani tanlang → vaqt oraliqlari va kunlarni belgilang → **Saqlash**.
+3. **Umumiy jadval**da "Dan"/"Gacha" vaqtlarini va kunlarni belgilang.
+4. **"Tanlash"** → jadvalga bo'ysunadigan ilovalarni belgilang → **Saqlash**.
 
 Ba'zi ishlab chiqaruvchilar (Xiaomi, Huawei, Samsung va b.) fon xizmatlarini
 o'chirib qo'yishi mumkin — MobiControl uchun batareya optimallashtirishni
 o'chirib qo'yish tavsiya etiladi.
+
+## Release chiqarish (GitHub Actions)
+
+`.github/workflows/build.yml` har bir push'da testlarni ishga tushirib, APK
+yig'adi (Actions → artifact `MobiControl-apk`). `v` bilan boshlanuvchi teg
+qo'yilganda Release yaratilib, APK unga biriktiriladi:
+
+```bash
+git tag v1.0.1
+git push origin v1.0.1
+```
+
+Standart holatda APK **debug kaliti** bilan imzolanadi. Yangilanishlar eski
+versiya ustiga o'rnatilishi uchun o'z kalitingizni yarating va repo
+sozlamalariga (*Settings → Secrets and variables → Actions*) qo'shing:
+
+```bash
+keytool -genkey -v -keystore release.jks -keyalg RSA -keysize 2048 \
+  -validity 10000 -alias mobicontrol
+base64 -w0 release.jks   # natijani KEYSTORE_BASE64 ga qo'ying
+```
+
+Secrets: `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`.
 
 ## Testlar
 

@@ -1,6 +1,6 @@
 import 'package:flutter/services.dart';
 
-import '../models/app_rule.dart';
+import '../models/schedule.dart';
 
 class InstalledApp {
   const InstalledApp({
@@ -16,7 +16,7 @@ class InstalledApp {
 
 /// Android tomondagi kod bilan aloqa (MethodChannel).
 ///
-/// Qoidalar Android SharedPreferences'da saqlanadi, chunki ularni
+/// Jadval va ilovalar ro'yxati Android SharedPreferences'da saqlanadi, chunki ularni
 /// ilova yopiq bo'lganda ham ishlaydigan Accessibility Service o'qiydi.
 class NativeBridge {
   NativeBridge._();
@@ -45,11 +45,11 @@ class NativeBridge {
   static Future<Uint8List?> getAppIcon(String packageName) =>
       _channel.invokeMethod<Uint8List>('getAppIcon', packageName);
 
-  static Future<List<AppRule>> loadRules() async =>
-      AppRule.decodeList(await _channel.invokeMethod<String>('loadRules'));
+  static Future<Config> loadConfig() async =>
+      Config.decode(await _channel.invokeMethod<String>('loadConfig'));
 
-  static Future<void> saveRules(List<AppRule> rules) =>
-      _channel.invokeMethod('saveRules', AppRule.encodeList(rules));
+  static Future<void> saveConfig(Config config) =>
+      _channel.invokeMethod('saveConfig', config.encode());
 
   static Future<bool> isAccessibilityEnabled() async =>
       await _channel.invokeMethod<bool>('isAccessibilityEnabled') ?? false;

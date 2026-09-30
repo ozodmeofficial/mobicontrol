@@ -34,12 +34,12 @@ class MainActivity : FlutterActivity() {
                             null
                         }
                     }
-                    "loadRules" -> result.success(RuleStore.loadJson(this))
-                    "saveRules" -> try {
+                    "loadConfig" -> result.success(RuleStore.loadJson(this))
+                    "saveConfig" -> try {
                         RuleStore.saveJson(this, call.arguments as String)
                         result.success(null)
                     } catch (e: Exception) {
-                        result.error("INVALID_RULES", e.message, null)
+                        result.error("INVALID_CONFIG", e.message, null)
                     }
                     "isAccessibilityEnabled" -> result.success(isAccessibilityServiceEnabled(this))
                     "openAccessibilitySettings" -> {

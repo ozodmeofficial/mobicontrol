@@ -6,6 +6,11 @@ on:
     tags: ['v*']
   pull_request:
   workflow_dispatch:
+    inputs:
+      version:
+        description: "Release versiyasi (masalan 1.0.0). Bo'sh qolsa, faqat APK yig'iladi."
+        required: false
+        default: ''
 
 permissions:
   contents: write
@@ -49,9 +54,15 @@ jobs:
           PROPS
 
       - name: APK yig'ish
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
         run: |
+          VERSION="$INPUT_VERSION"
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             VERSION="${GITHUB_REF_NAME#v}"
+          fi
+          if [[ -n "$VERSION" ]]; then
+            echo "RELEASE_TAG=v$VERSION" >> "$GITHUB_ENV"
             flutter build apk --release --build-name="$VERSION" --build-number="$GITHUB_RUN_NUMBER"
           else
             flutter build apk --release
@@ -64,8 +75,11 @@ jobs:
           path: MobiControl.apk
 
       - name: Release chiqarish
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: env.RELEASE_TAG != ''
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: MobiControl ${{ env.RELEASE_TAG }}
+          target_commitish: ${{ github.sha }}
           files: MobiControl.apk
           generate_release_notes: true

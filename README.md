@@ -72,13 +72,11 @@ o'chirib qo'yish tavsiya etiladi.
 ## Release chiqarish (GitHub Actions)
 
 `.github/workflows/build.yml` har bir push'da testlarni ishga tushirib, APK
-yig'adi (Actions → artifact `MobiControl-apk`). `v` bilan boshlanuvchi teg
-qo'yilganda Release yaratilib, APK unga biriktiriladi:
+yig'adi (Actions → artifact `MobiControl-apk`). Release chiqarish uchun ikki yo'l bor:
 
-```bash
-git tag v1.0.1
-git push origin v1.0.1
-```
+- GitHub'da *Actions → Build APK → Run workflow* ni bosib, `version` maydoniga
+  masalan `1.0.1` yozing — `v1.0.1` tegi va Release avtomatik yaratiladi.
+- Yoki teg push qiling: `git tag v1.0.1 && git push origin v1.0.1`.
 
 Standart holatda APK **debug kaliti** bilan imzolanadi. Yangilanishlar eski
 versiya ustiga o'rnatilishi uchun o'z kalitingizni yarating va repo
